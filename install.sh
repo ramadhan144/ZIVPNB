@@ -93,7 +93,14 @@ run_silent "Configuring" "wget -q https://raw.githubusercontent.com/ramadhan144/
 
 run_silent "Generating SSL" "openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj '/C=ID/ST=Jawa Barat/L=Bandung/O=AutoFTbot/OU=IT Department/CN=$domain' -keyout /etc/zivpn/zivpn.key -out /etc/zivpn/zivpn.crt"
 
-
+# Find a free API port
+print_task "Finding available API Port"
+API_PORT=6969
+while netstat -tuln | grep -q ":$API_PORT "; do
+    ((API_PORT++))
+done
+echo "$API_PORT" > /etc/zivpn/api_port
+print_done "API Port selected: ${CYAN}$API_PORT${RESET}"
 
 cat >> /etc/sysctl.conf <<END
 net.core.default_qdisc=fq
@@ -240,14 +247,14 @@ iface=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
 iptables -t nat -A PREROUTING -i "$iface" -p udp --dport 6000:19999 -j DNAT --to-destination :5667 &>/dev/null
 ufw allow 6000:19999/udp &>/dev/null
 ufw allow 5667/udp &>/dev/null
-ufw allow 6969/tcp &>/dev/null
+ufw allow $API_PORT/tcp &>/dev/null
 
 rm -f "$0" install.tmp install.log &>/dev/null
 
 echo ""
 echo -e "${BOLD}Installation Complete${RESET}"
 echo -e "Domain  : ${CYAN}$domain${RESET}"
-echo -e "API     : ${CYAN}Port 6969${RESET}"
+echo -e "API     : ${CYAN}$API_PORT${RESET}"
 echo -e "Token   : ${CYAN}$api_key${RESET}"
 echo -e "Dev     : ${CYAN}https://t.me/AutoFTBot${RESET}"
 echo ""
