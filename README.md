@@ -72,7 +72,7 @@ Saat script berjalan, Anda akan diminta memasukkan:
 
 ## 🔌 API Documentation
 
-API berjalan di port `8080`. Gunakan **API Key** pada header `X-API-Key`.
+API berjalan di port `6969`. Gunakan **API Key** pada header `X-API-Key`.
 
 **Base URL**: `http://<IP-VPS>:8080`
 **Header**: `X-API-Key: <YOUR-API-KEY>`
@@ -136,7 +136,7 @@ Jika Anda melihat log seperti:
 
 ### 4. Service Gagal Start
 *   Cek status: `systemctl status zivpn`
-*   Pastikan port `5667` (UDP) dan `8080` (TCP) tidak terpakai aplikasi lain.
+*   Pastikan port `5667` (UDP) dan `6969` (TCP) tidak terpakai aplikasi lain.
 *   Cek config: `cat /etc/zivpn/config.json`
 
 ---
