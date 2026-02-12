@@ -138,7 +138,7 @@ func handleMessage(bot *tgbotapi.BotAPI, msg *tgbotapi.Message, config *BotConfi
 	if msg.IsCommand() {
 		switch msg.Command() {
 		case "start":
-			showMainMenu(bot, msg.Chat.ID, msg.From.ID, config)
+			showMainMenu(bot, msg.Chat.ID, config)
 		default:
 			replyError(bot, msg.Chat.ID, "Perintah tidak dikenal.")
 		}
@@ -162,23 +162,17 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, config 
 	case query.Data == "menu_create":
 		startCreateUser(bot, chatID, userID)
 	case query.Data == "menu_delete":
-		if userID != config.AdminID {
-			bot.Request(tgbotapi.NewCallback(query.ID, "⛔ Akses Ditolak"))
-			return
-		}
 		showUserSelection(bot, chatID, 1, "delete")
 	case query.Data == "menu_renew":
-		if userID != config.AdminID {
-			bot.Request(tgbotapi.NewCallback(query.ID, "⛔ Akses Ditolak"))
-			return
-		}
 		showUserSelection(bot, chatID, 1, "renew")
 	case query.Data == "menu_list":
-		if userID == config.AdminID {
+		if config.Mode == "public" || userID == config.AdminID {
 			listUsers(bot, chatID)
 		}
 	case query.Data == "menu_info":
-		systemInfo(bot, chatID, config)
+		if config.Mode == "public" || userID == config.AdminID {
+			systemInfo(bot, chatID, config)
+		}
 	case query.Data == "menu_backup_restore":
 		if userID == config.AdminID {
 			showBackupRestoreMenu(bot, chatID)
@@ -200,24 +194,12 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, config 
 
 	// --- Action Selection ---
 	case strings.HasPrefix(query.Data, "select_renew:"):
-		if userID != config.AdminID {
-			bot.Request(tgbotapi.NewCallback(query.ID, "⛔ Akses Ditolak"))
-			return
-		}
 		startRenewUser(bot, chatID, userID, query.Data)
 	case strings.HasPrefix(query.Data, "select_delete:"):
-		if userID != config.AdminID {
-			bot.Request(tgbotapi.NewCallback(query.ID, "⛔ Akses Ditolak"))
-			return
-		}
 		confirmDeleteUser(bot, chatID, query.Data)
 
 	// --- Action Confirmation ---
 	case strings.HasPrefix(query.Data, "confirm_delete:"):
-		if userID != config.AdminID {
-			bot.Request(tgbotapi.NewCallback(query.ID, "⛔ Akses Ditolak"))
-			return
-		}
 		username := strings.TrimPrefix(query.Data, "confirm_delete:")
 		deleteUser(bot, chatID, username, config)
 
@@ -296,7 +278,7 @@ func confirmDeleteUser(bot *tgbotapi.BotAPI, chatID int64, data string) {
 
 func cancelOperation(bot *tgbotapi.BotAPI, chatID int64, userID int64, config *BotConfig) {
 	resetState(userID)
-	showMainMenu(bot, chatID, userID, config)
+	showMainMenu(bot, chatID, config)
 }
 
 func handlePagination(bot *tgbotapi.BotAPI, chatID int64, data string) {
@@ -316,7 +298,7 @@ func toggleMode(bot *tgbotapi.BotAPI, chatID int64, userID int64, config *BotCon
 		config.Mode = "public"
 	}
 	saveConfig(config)
-	showMainMenu(bot, chatID, userID, config)
+	showMainMenu(bot, chatID, config)
 }
 
 func createUser(bot *tgbotapi.BotAPI, chatID int64, username string, days int, config *BotConfig) {
@@ -335,7 +317,7 @@ func createUser(bot *tgbotapi.BotAPI, chatID int64, username string, days int, c
 		sendAccountInfo(bot, chatID, data, config)
 	} else {
 		replyError(bot, chatID, fmt.Sprintf("Gagal: %s", res["message"]))
-		showMainMenu(bot, chatID, chatID, config)
+		showMainMenu(bot, chatID, config)
 	}
 }
 
@@ -355,7 +337,7 @@ func renewUser(bot *tgbotapi.BotAPI, chatID int64, username string, days int, co
 		sendAccountInfo(bot, chatID, data, config)
 	} else {
 		replyError(bot, chatID, fmt.Sprintf("Gagal: %s", res["message"]))
-		showMainMenu(bot, chatID, chatID, config)
+		showMainMenu(bot, chatID, config)
 	}
 }
 
@@ -373,10 +355,10 @@ func deleteUser(bot *tgbotapi.BotAPI, chatID int64, username string, config *Bot
 		msg := tgbotapi.NewMessage(chatID, "✅ Password berhasil dihapus.")
 		deleteLastMessage(bot, chatID)
 		bot.Send(msg)
-		showMainMenu(bot, chatID, chatID, config)
+		showMainMenu(bot, chatID, config)
 	} else {
 		replyError(bot, chatID, fmt.Sprintf("Gagal: %s", res["message"]))
-		showMainMenu(bot, chatID, chatID, config)
+		showMainMenu(bot, chatID, config)
 	}
 }
 
@@ -430,7 +412,7 @@ func systemInfo(bot *tgbotapi.BotAPI, chatID int64, config *BotConfig) {
 		reply.ParseMode = "Markdown"
 		deleteLastMessage(bot, chatID)
 		bot.Send(reply)
-		showMainMenu(bot, chatID, chatID, config)
+		showMainMenu(bot, chatID, config)
 	} else {
 		replyError(bot, chatID, "Gagal mengambil info.")
 	}
@@ -588,14 +570,14 @@ func processRestoreFile(bot *tgbotapi.BotAPI, msg *tgbotapi.Message, config *Bot
 		exec.Command("systemctl", "restart", "zivpn-bot").Run()
 	}()
 
-	showMainMenu(bot, chatID, userID, config)
+	showMainMenu(bot, chatID, config)
 }
 
 // ==========================================
 // UI & Helpers
 // ==========================================
 
-func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, userID int64, config *BotConfig) {
+func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, config *BotConfig) {
 	ipInfo, _ := getIpInfo()
 	domain := config.Domain
 	if domain == "" {
@@ -606,25 +588,33 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, userID int64, config *BotC
 
 	msg := tgbotapi.NewMessage(chatID, msgText)
 	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = getMainMenuKeyboard(config, userID)
+	msg.ReplyMarkup = getMainMenuKeyboard(config, chatID)
 	sendAndTrack(bot, msg)
 }
 
 func getMainMenuKeyboard(config *BotConfig, userID int64) tgbotapi.InlineKeyboardMarkup {
 	var rows [][]tgbotapi.InlineKeyboardButton
 
-	if userID == config.AdminID {
-		// Full menu untuk Admin
+	// Create Password selalu tersedia untuk semua yang diizinkan masuk
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
+	))
+
+	// List Passwords & System Info: tersedia di mode public atau untuk admin
+	if config.Mode == "public" || userID == config.AdminID {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
-			tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete Password", "menu_delete"),
-		))
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Renew Password", "menu_renew"),
 			tgbotapi.NewInlineKeyboardButtonData("📋 List Passwords", "menu_list"),
+			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
+		))
+	}
+
+	// Hanya admin yang melihat menu Delete, Renew, Backup & Toggle
+	if userID == config.AdminID {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete Password", "menu_delete"),
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Renew Password", "menu_renew"),
 		))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
 			tgbotapi.NewInlineKeyboardButtonData("💾 Backup & Restore", "menu_backup_restore"),
 		))
 
@@ -634,14 +624,6 @@ func getMainMenuKeyboard(config *BotConfig, userID int64) tgbotapi.InlineKeyboar
 		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(modeLabel, "toggle_mode"),
-		))
-	} else {
-		// Hanya untuk mode Public (non-admin)
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
-		))
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
 		))
 	}
 
@@ -668,7 +650,7 @@ func sendAccountInfo(bot *tgbotapi.BotAPI, chatID int64, data map[string]interfa
 	reply.ParseMode = "Markdown"
 	deleteLastMessage(bot, chatID)
 	bot.Send(reply)
-	showMainMenu(bot, chatID, chatID, config)
+	showMainMenu(bot, chatID, config)
 }
 
 func showUserSelection(bot *tgbotapi.BotAPI, chatID int64, page int, action string) {
