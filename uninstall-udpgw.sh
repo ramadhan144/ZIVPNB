@@ -32,7 +32,7 @@ run_silent() {
 
 clear
 echo -e "${BOLD}udpgw Uninstaller${RESET}"
-echo -e "${GRAY}Standalone Edition${RESET}"
+echo -e "${GRAY}Ramadan Edition${RESET}"
 echo ""
 
 run_silent "Stopping and disabling udpgw service" "systemctl stop udpgw &>/dev/null; systemctl disable udpgw &>/dev/null; killall udpgw &>/dev/null"
@@ -44,4 +44,5 @@ run_silent "Reloading systemd daemon" "systemctl daemon-reload && systemctl daem
 echo ""
 echo -e "${BOLD}Uninstallation Complete${RESET}"
 echo -e "${GRAY}udpgw has been completely removed from your system.${RESET}"
+
 echo ""
