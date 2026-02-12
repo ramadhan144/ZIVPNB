@@ -32,7 +32,7 @@ run_silent() {
 
 clear
 echo -e "${BOLD}ZiVPN UDP Uninstaller${RESET}"
-echo -e "${GRAY}AutoFTbot Edition${RESET}"
+echo -e "${GRAY}Ramadan Edition${RESET}"
 echo ""
 
 run_silent "Stopping services" "systemctl stop zivpn.service zivpn-api.service zivpn-bot.service zivpn_backfill.service &>/dev/null; systemctl disable zivpn.service zivpn-api.service zivpn-bot.service zivpn_backfill.service &>/dev/null; killall zivpn zivpn-api zivpn-bot &>/dev/null"
