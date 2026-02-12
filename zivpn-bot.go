@@ -599,10 +599,10 @@ func getMainMenuKeyboard(config *BotConfig, userID int64) tgbotapi.InlineKeyboar
 	rows := [][]tgbotapi.InlineKeyboardButton{
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
-			tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete Password", "menu_delete"),
+			tgbotapi.NewInlineKeyboardButtonData("📋 List Passwords", "menu_list"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Renew Password", "menu_renew"),
+			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
 		),
 	}
 
