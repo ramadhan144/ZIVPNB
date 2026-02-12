@@ -132,5 +132,6 @@ echo -e "${GREEN} UDPGW INSTALL SELESAI ${NC}"
 echo "======================================="
 echo " UDPGW Port : 7300"
 echo " Config     : /etc/udpgw/udpgw.json"
-echo " ZIVPN      : TIDAK DIUBAH"
+echo " ZIVPN      : TIDAKAKAN TERGANGU HANYA MENAMBAH UDPGW "
+
 echo "======================================="
