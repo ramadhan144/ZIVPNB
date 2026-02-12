@@ -38,7 +38,7 @@ run_silent() {
 
 clear
 echo -e "${BOLD}ZiVPN UDP Installer${RESET}"
-echo -e "${GRAY}AutoFTbot Edition${RESET}"
+echo -e "${GRAY}Ramadan Edition${RESET}"
 echo ""
 
 if [[ "$(uname -s)" != "Linux" ]] || [[ "$(uname -m)" != "x86_64" ]]; then
