@@ -25,11 +25,12 @@ import (
 // ==========================================
 
 const (
-	BotConfigFile = "/etc/zivpn/bot-config.json"
-	ApiPortFile   = "/etc/zivpn/api_port"
-	ApiKeyFile    = "/etc/zivpn/apikey"
-	DomainFile    = "/etc/zivpn/domain"
-	PortFile      = "/etc/zivpn/port"
+	BotConfigFile          = "/etc/zivpn/bot-config.json"
+	ApiPortFile            = "/etc/zivpn/api_port"
+	ApiKeyFile             = "/etc/zivpn/apikey"
+	DomainFile             = "/etc/zivpn/domain"
+	PortFile               = "/etc/zivpn/port"
+	TelegramMappingsFile   = "/etc/zivpn/telegram_mappings.json" // <--- BARU
 )
 
 var ApiUrl = "http://127.0.0.1:" + PortFile + "/api"
@@ -63,6 +64,7 @@ type UserData struct {
 var userStates = make(map[int64]string)
 var tempUserData = make(map[int64]map[string]string)
 var lastMessageIDs = make(map[int64]int)
+var userAccounts = make(map[int64]string) // TelegramID -> Password  <--- BARU
 
 // ==========================================
 // Main Entry Point
@@ -84,6 +86,11 @@ func main() {
 	config, err := loadConfig()
 	if err != nil {
 		log.Fatal("Gagal memuat konfigurasi bot:", err)
+	}
+
+	// Load telegram mappings  <--- BARU
+	if err := loadTelegramMappings(); err != nil {
+		log.Printf("Gagal load telegram mappings: %v", err)
 	}
 
 	// Initialize Bot
@@ -138,6 +145,10 @@ func handleMessage(bot *tgbotapi.BotAPI, msg *tgbotapi.Message, config *BotConfi
 	if msg.IsCommand() {
 		switch msg.Command() {
 		case "start":
+			// Cek apakah user sudah punya akun sebelum tampilkan menu
+			if showExistingIfAny(bot, msg.Chat.ID, msg.From.ID, config) {
+				return
+			}
 			showMainMenu(bot, msg.Chat.ID, config)
 		default:
 			replyError(bot, msg.Chat.ID, "Perintah tidak dikenal.")
@@ -160,19 +171,21 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery, config 
 	switch {
 	// --- Menu Navigation ---
 	case query.Data == "menu_create":
+		if showExistingIfAny(bot, chatID, userID, config) {
+			bot.Request(tgbotapi.NewCallback(query.ID, ""))
+			return
+		}
 		startCreateUser(bot, chatID, userID)
 	case query.Data == "menu_delete":
 		showUserSelection(bot, chatID, 1, "delete")
 	case query.Data == "menu_renew":
 		showUserSelection(bot, chatID, 1, "renew")
 	case query.Data == "menu_list":
-		if config.Mode == "public" || userID == config.AdminID {
+		if userID == config.AdminID {
 			listUsers(bot, chatID)
 		}
 	case query.Data == "menu_info":
-		if config.Mode == "public" || userID == config.AdminID {
-			systemInfo(bot, chatID, config)
-		}
+		systemInfo(bot, chatID, config) // Sekarang semua user bisa akses
 	case query.Data == "menu_backup_restore":
 		if userID == config.AdminID {
 			showBackupRestoreMenu(bot, chatID)
@@ -315,6 +328,10 @@ func createUser(bot *tgbotapi.BotAPI, chatID int64, username string, days int, c
 	if res["success"] == true {
 		data := res["data"].(map[string]interface{})
 		sendAccountInfo(bot, chatID, data, config)
+
+		// Simpan mapping Telegram ID -> Password
+		userAccounts[chatID] = username // chatID == userID di private chat
+		_ = saveTelegramMappings()
 	} else {
 		replyError(bot, chatID, fmt.Sprintf("Gagal: %s", res["message"]))
 		showMainMenu(bot, chatID, config)
@@ -352,6 +369,15 @@ func deleteUser(bot *tgbotapi.BotAPI, chatID int64, username string, config *Bot
 	}
 
 	if res["success"] == true {
+		// Hapus mapping jika ada user yang akunnya dihapus
+		for uid, pass := range userAccounts {
+			if pass == username {
+				delete(userAccounts, uid)
+				_ = saveTelegramMappings()
+				break
+			}
+		}
+
 		msg := tgbotapi.NewMessage(chatID, "✅ Password berhasil dihapus.")
 		deleteLastMessage(bot, chatID)
 		bot.Send(msg)
@@ -441,6 +467,7 @@ func performBackup(bot *tgbotapi.BotAPI, chatID int64) {
 		"/etc/zivpn/config.json",
 		"/etc/zivpn/users.json",
 		"/etc/zivpn/domain",
+		TelegramMappingsFile, // <--- BARU
 	}
 
 	buf := new(bytes.Buffer)
@@ -471,7 +498,6 @@ func performBackup(bot *tgbotapi.BotAPI, chatID int64) {
 
 	fileName := fmt.Sprintf("zivpn-backup-%s.zip", time.Now().Format("20060102-150405"))
 	
-	// Create a temporary file for the upload
 	tmpFile := "/tmp/" + fileName
 	if err := ioutil.WriteFile(tmpFile, buf.Bytes(), 0644); err != nil {
 		replyError(bot, chatID, "Gagal membuat file backup.")
@@ -527,16 +553,16 @@ func processRestoreFile(bot *tgbotapi.BotAPI, msg *tgbotapi.Message, config *Bot
 		return
 	}
 
+	validFiles := map[string]bool{
+		"config.json":          true,
+		"users.json":           true,
+		"bot-config.json":      true,
+		"domain":               true,
+		"apikey":               true,
+		"telegram_mappings.json": true, // <--- BARU
+	}
+
 	for _, f := range zipReader.File {
-		// Security check: only allow specific files
-		validFiles := map[string]bool{
-			"config.json": true,
-			"users.json": true,
-			"bot-config.json": true,
-			"domain": true,
-			"apikey": true,
-		}
-		
 		if !validFiles[f.Name] {
 			continue
 		}
@@ -564,7 +590,6 @@ func processRestoreFile(bot *tgbotapi.BotAPI, msg *tgbotapi.Message, config *Bot
 	msgSuccess := tgbotapi.NewMessage(chatID, "✅ Restore Berhasil!\nService ZiVPN, API, dan Bot telah direstart.")
 	bot.Send(msgSuccess)
 	
-	// Restart Bot with delay to allow message sending
 	go func() {
 		time.Sleep(2 * time.Second)
 		exec.Command("systemctl", "restart", "zivpn-bot").Run()
@@ -593,31 +618,26 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, config *BotConfig) {
 }
 
 func getMainMenuKeyboard(config *BotConfig, userID int64) tgbotapi.InlineKeyboardMarkup {
-	var rows [][]tgbotapi.InlineKeyboardButton
-
-	// Create Password selalu tersedia untuk semua yang diizinkan masuk
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
-	))
-
-	// List Passwords & System Info: tersedia di mode public atau untuk admin
-	if config.Mode == "public" || userID == config.AdminID {
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📋 List Passwords", "menu_list"),
+	// Menu dasar untuk semua user yang diizinkan
+	rows := [][]tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
 			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
-		))
+		),
 	}
 
-	// Hanya admin yang melihat menu Delete, Renew, Backup & Toggle
+	// Menu tambahan hanya untuk admin
 	if userID == config.AdminID {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete Password", "menu_delete"),
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Renew Password", "menu_renew"),
 		))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📋 List Passwords", "menu_list"),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("💾 Backup & Restore", "menu_backup_restore"),
 		))
-
 		modeLabel := "🔐 Mode: Private"
 		if config.Mode == "public" {
 			modeLabel = "🌍 Mode: Public"
@@ -651,6 +671,36 @@ func sendAccountInfo(bot *tgbotapi.BotAPI, chatID int64, data map[string]interfa
 	deleteLastMessage(bot, chatID)
 	bot.Send(reply)
 	showMainMenu(bot, chatID, config)
+}
+
+// <--- BARU: Cek dan tampilkan akun existing jika ada
+func showExistingIfAny(bot *tgbotapi.BotAPI, chatID int64, userID int64, config *BotConfig) bool {
+	password := userAccounts[userID]
+	if password == "" {
+		return false
+	}
+
+	users, err := getUsers()
+	if err != nil {
+		return false
+	}
+
+	for _, u := range users {
+		if u.Password == password {
+			data := map[string]interface{}{
+				"password": u.Password,
+				"expired":  u.Expired,
+			}
+			sendAccountInfo(bot, chatID, data, config)
+			sendMessage(bot, chatID, "⚠️ Anda sudah memiliki akun VPN. Untuk perubahan (renew/delete), hubungi admin.")
+			return true
+		}
+	}
+
+	// Jika akun tidak ditemukan di server, hapus mapping
+	delete(userAccounts, userID)
+	_ = saveTelegramMappings()
+	return false
 }
 
 func showUserSelection(bot *tgbotapi.BotAPI, chatID int64, page int, action string) {
@@ -798,7 +848,6 @@ func loadConfig() (BotConfig, error) {
 	}
 	err = json.Unmarshal(file, &config)
 
-	// Jika domain kosong di config, coba baca dari file domain
 	if config.Domain == "" {
 		if domainBytes, err := ioutil.ReadFile(DomainFile); err == nil {
 			config.Domain = strings.TrimSpace(string(domainBytes))
@@ -806,6 +855,33 @@ func loadConfig() (BotConfig, error) {
 	}
 
 	return config, err
+}
+
+// <--- BARU: Load & Save telegram mappings
+func loadTelegramMappings() error {
+	if data, err := ioutil.ReadFile(TelegramMappingsFile); err == nil {
+		var m map[string]string
+		if json.Unmarshal(data, &m) == nil {
+			for k, v := range m {
+				if id, err := strconv.ParseInt(k, 10, 64); err == nil {
+					userAccounts[id] = v
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func saveTelegramMappings() error {
+	m := make(map[string]string)
+	for id, pass := range userAccounts {
+		m[strconv.FormatInt(id, 10)] = pass
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(TelegramMappingsFile, data, 0644)
 }
 
 // ==========================================
