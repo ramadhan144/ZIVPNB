@@ -595,36 +595,39 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, config *BotConfig) {
 }
 
 func getMainMenuKeyboard(config *BotConfig, userID int64) tgbotapi.InlineKeyboardMarkup {
-	// Public Menu (Everyone)
-	rows := [][]tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardRow(
+	isAdmin := userID == config.AdminID
+	var rows [][]tgbotapi.InlineKeyboardButton
+
+	if isAdmin {
+		// Menu lengkap untuk admin (sama seperti sebelumnya)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
+			tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete Password", "menu_delete"),
+		))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Renew Password", "menu_renew"),
 			tgbotapi.NewInlineKeyboardButtonData("📋 List Passwords", "menu_list"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
-		),
-	}
-
-	// Admin Menu (Admin Only)
-	if userID == config.AdminID {
-		modeLabel := "🔐 Mode: Private"
-		if config.Mode == "public" {
-			modeLabel = "🌍 Mode: Public"
-		}
-
-		rows[1] = append(rows[1], tgbotapi.NewInlineKeyboardButtonData("📋 List Passwords", "menu_list"))
-		
+		))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
 			tgbotapi.NewInlineKeyboardButtonData("💾 Backup & Restore", "menu_backup_restore"),
 		))
+		modeLabel := "🔐 Mode: Private"
+		if config.Mode == "public" {
+			modeLabel = "🌍 Mode: Public"
+		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(modeLabel, "toggle_mode"),
 		))
+	} else {
+		// Hanya untuk user biasa di mode public
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👤 Create Password", "menu_create"),
+			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
+		))
 	}
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return tgbotapi.InlineKeyboardMarkup(rows...)
 }
 
 func sendAccountInfo(bot *tgbotapi.BotAPI, chatID int64, data map[string]interface{}, config *BotConfig) {
