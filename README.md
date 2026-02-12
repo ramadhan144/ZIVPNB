@@ -38,6 +38,11 @@ Jalankan perintah berikut di terminal VPS Anda (sebagai root):
 ```bash
 wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/install.sh && chmod +x install.sh && ./install.sh
 ```
+Jika Ingin Menambahkan UDPGW pada Zivpn nya Jalankan Perintah berikut :
+- Wajib install Golang Min Versi 1.17 akan lebih baik gunakan versi Golang terbaru
+```bash
+wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/udpgw.sh && chmod +x udpgw.sh && ./udpgw.sh
+```
 
 ### Konfigurasi Saat Instalasi
 Saat script berjalan, Anda akan diminta memasukkan:
@@ -108,7 +113,7 @@ Anda dapat mengimpor koleksi API lengkap ke Postman menggunakan file JSON beriku
 
 ---
 
-## �🛠️ Pemecahan Masalah (Troubleshooting)
+##  🛠️ Pemecahan Masalah (Troubleshooting)
 
 ### 1. Log "TCP error" di Jurnal
 Jika Anda melihat log seperti:
@@ -142,4 +147,9 @@ Untuk menghapus ZiVPN, API, Bot, dan semua konfigurasi:
 
 ```bash
 wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/uninstall.sh && chmod +x uninstall.sh && ./uninstall.sh
+```
+Untuk menghapus UDPGW dan semua konfigurasi:
+
+```bash
+wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/uninstall-udpgw.sh && chmod +x uninstall-udpgw.sh && ./uninstall-udpgw.sh
 ```
