@@ -1,48 +1,40 @@
 #!/bin/bash
 
-# Colors
-GREEN="\033[1;32m"
-YELLOW="\033[1;33m"
-CYAN="\033[1;36m"
-RED="\033[1;31m"
-RESET="\033[0m"
-BOLD="\033[1m"
-GRAY="\033[1;30m"
+# udpgw Uninstaller - Versi Alternatif
 
-print_task() {
-  echo -ne "${GRAY}•${RESET} $1..."
-}
+if [[ $EUID -ne 0 ]]; then
+    echo "Error: Script ini harus dijalankan sebagai root (gunakan sudo)."
+    exit 1
+fi
 
-print_done() {
-  echo -e "\r${GREEN}✓${RESET} $1      "
-}
+echo "=== udpgw Uninstaller ==="
+echo "Script ini akan menghapus:"
+echo "   • Service systemd udpgw"
+echo "   • Binary /usr/local/bin/udpgw"
+echo "   • Folder konfigurasi /etc/udpgw"
+echo
 
-run_silent() {
-  local msg="$1"
-  local cmd="$2"
-  
-  print_task "$msg"
-  bash -c "$cmd" &>/tmp/udpgw_uninstall.log
-  if [ $? -eq 0 ]; then
-    print_done "$msg"
-  else
-    echo -e "\r${RED}✗${RESET} $msg (lihat log: /tmp/udpgw_uninstall.log)"
-  fi
-}
+read -p "Lanjutkan penghapusan? (y/N): " confirm
+if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Dibatalkan."
+    exit 0
+fi
 
-clear
-echo -e "${BOLD}udpgw Uninstaller${RESET}"
-echo -e "${GRAY}Ramadan Edition${RESET}"
-echo ""
+echo
+echo "Menghentikan dan menonaktifkan service..."
+systemctl stop udpgw 2>/dev/null
+systemctl disable udpgw 2>/dev/null
+killall udpgw 2>/dev/null
 
-run_silent "Stopping and disabling udpgw service" "systemctl stop udpgw &>/dev/null; systemctl disable udpgw &>/dev/null; killall udpgw &>/dev/null"
+echo "Menghapus file dan folder..."
+rm -f /usr/local/bin/udpgw && echo "   → /usr/local/bin/udpgw dihapus"
+rm -rf /etc/udpgw && echo "   → /etc/udpgw dihapus"
+rm -f /etc/systemd/system/udpgw.service && echo "   → Service file dihapus"
 
-run_silent "Removing udpgw files and binaries" "rm -f /usr/local/bin/udpgw; rm -rf /etc/udpgw; rm -f /etc/systemd/system/udpgw.service"
+echo "Reload systemd daemon..."
+systemctl daemon-reload
+systemctl daemon-reexec
 
-run_silent "Reloading systemd daemon" "systemctl daemon-reload && systemctl daemon-reexec"
-
-echo ""
-echo -e "${BOLD}Uninstallation Complete${RESET}"
-echo -e "${GRAY}udpgw has been completely removed from your system.${RESET}"
-
-echo ""
+echo
+echo "Uninstall selesai!"
+echo "udpgw telah dihapus sepenuhnya dari sistem."
