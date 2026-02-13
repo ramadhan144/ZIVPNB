@@ -41,7 +41,7 @@ wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/install.sh && 
 Jika Ingin Menambahkan UDPGW pada Zivpn nya Jalankan Perintah berikut :
 - Wajib install Golang Min Versi 1.17 akan lebih baik gunakan versi Golang terbaru
 ```bash
-wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/udpgw.sh && chmod +x udpgw.sh && ./udpgw.sh
+wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/udpgw.sh && sed -i 's/\r$//' udpgw.sh && chmod +x udpgw.sh && ./udpgw.sh
 ```
 
 ### Konfigurasi Saat Instalasi
@@ -151,5 +151,5 @@ wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/uninstall.sh &
 Untuk menghapus UDPGW dan semua konfigurasi:
 
 ```bash
-wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/uninstall-udpgw.sh && chmod +x uninstall-udpgw.sh && ./uninstall-udpgw.sh
+wget -q https://raw.githubusercontent.com/ramadhan144/ZIVPNB/main/uninstall-udpgw.sh && sed -i 's/\r$//' uninstall-udpgw.sh && chmod +x uninstall-udpgw.sh && ./uninstall-udpgw.sh
 ```
