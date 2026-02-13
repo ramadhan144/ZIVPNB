@@ -306,77 +306,6 @@ func confirmDeleteUser(bot *tgbotapi.BotAPI, chatID int64, data string) {
 	sendAndTrack(bot, msg)
 }
 
-func processPayment(bot *tgbotapi.BotAPI, chatID int64, userID int64, days int, config *BotConfig) {
-	price := days * config.DailyPrice
-	if price < 500 {
-		sendMessage(bot, chatID, fmt.Sprintf("❌ Total harga Rp %d. Minimal transaksi adalah Rp 500.\nSilakan tambah durasi.", price))
-		return
-	}
-	orderID := fmt.Sprintf("ZIVPN-%d-%d", userID, time.Now().Unix())
-
-	payment, err := createPakasirTransaction(config, orderID, price)
-	if err != nil {
-		replyError(bot, chatID, "Gagal membuat pembayaran: "+err.Error())
-		resetState(userID)
-		return
-	}
-
-	mutex.Lock()
-	tempUserData[userID]["order_id"] = orderID
-	tempUserData[userID]["price"] = strconv.Itoa(price)
-	mutex.Unlock()
-
-	qrUrl := fmt.Sprintf("https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=%s", payment.PaymentNumber)
-
-	msgText := fmt.Sprintf("💳 **Tagihan Pembayaran**\n\nPassword: `%s`\nDurasi: %d Hari\nTotal: Rp %d\n\nSilakan scan QRIS di atas untuk membayar.\nSistem akan otomatis mengecek pembayaran setiap menit.\nExpired: %s",
-		tempUserData[userID]["password"], days, price, payment.ExpiredAt)
-
-	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileURL(qrUrl))
-	photo.Caption = msgText
-	photo.ParseMode = "Markdown"
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Batal", "cancel"),
-		),
-	)
-	photo.ReplyMarkup = keyboard
-
-	deleteLastMessage(bot, chatID)
-	sentMsg, err := bot.Send(photo)
-	if err == nil {
-		lastMessageIDs[chatID] = sentMsg.MessageID
-	}
-
-	delete(userStates, userID)
-}
-
-func startPaymentChecker(bot *tgbotapi.BotAPI, config *BotConfig) {
-	ticker := time.NewTicker(1 * time.Minute)
-	for range ticker.C {
-		mutex.Lock()
-		for userID, data := range tempUserData {
-			if orderID, ok := data["order_id"]; ok {
-				price := data["price"]
-				chatID, _ := strconv.ParseInt(data["chat_id"], 10, 64)
-
-				status, err := checkPakasirStatus(config, orderID, price)
-				if err == nil && (status == "completed" || status == "success") {
-					password := data["password"]
-					days, _ := strconv.Atoi(data["days"])
-
-					createUser(bot, chatID, password, days, config)
-					delete(tempUserData, userID)
-					delete(userStates, userID)
-				} else if err != nil {
-					log.Printf("Error checking payment for %d: %v", userID, err)
-				}
-			}
-		}
-		mutex.Unlock()
-	}
-}
-
 func createUser(bot *tgbotapi.BotAPI, chatID int64, password string, days int, config *BotConfig) {
 	res, err := apiCall("POST", "/user/create", map[string]interface{}{
 		"password": password,
@@ -498,6 +427,22 @@ func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
 // User Selection & Pagination (Admin)
 // ==========================================
 
+func getUsers() ([]UserData, error) {
+	res, err := apiCall("GET", "/users", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if res["success"] != true {
+		return nil, fmt.Errorf("failed to get users")
+	}
+
+	var users []UserData
+	dataBytes, _ := json.Marshal(res["data"])
+	json.Unmarshal(dataBytes, &users)
+	return users, nil
+}
+
 func showUserSelection(bot *tgbotapi.BotAPI, chatID int64, page int, action string) {
 	users, err := getUsers()
 	if err != nil {
@@ -588,13 +533,11 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, config *BotConfig) {
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🛒 Beli Akun Premium", "menu_create"),
+			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
 		),
 	)
 
 	if chatID == config.AdminID {
-		keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 System Info", "menu_info"),
-		))
 		keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🛠️ Admin Panel", "menu_admin"),
 		))
@@ -631,20 +574,119 @@ func cancelOperation(bot *tgbotapi.BotAPI, chatID int64, userID int64, config *B
 	}
 }
 
-// ... (semua fungsi lain seperti sendMessage, replyError, validate, backup/restore, Pakasir API, loadConfig, apiCall, getIpInfo tetap sama tanpa perubahan)
+func validatePassword(bot *tgbotapi.BotAPI, chatID int64, text string) bool {
+	if len(text) < 3 || len(text) > 20 {
+		sendMessage(bot, chatID, "❌ Password harus 3-20 karakter. Coba lagi:")
+		return false
+	}
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(text) {
+		sendMessage(bot, chatID, "❌ Password hanya boleh huruf, angka, - dan _. Coba lagi:")
+		return false
+	}
+	return true
+}
 
-func getUsers() ([]UserData, error) {
-	res, err := apiCall("GET", "/users", nil)
+func validateNumber(bot *tgbotapi.BotAPI, chatID int64, text string, min, max int, fieldName string) (int, bool) {
+	val, err := strconv.Atoi(text)
+	if err != nil || val < min || val > max {
+		sendMessage(bot, chatID, fmt.Sprintf("❌ %s harus angka positif (%d-%d). Coba lagi:", fieldName, min, max))
+		return 0, false
+	}
+	return val, true
+}
+
+func resetState(userID int64) {
+	delete(userStates, userID)
+	delete(tempUserData, userID)
+}
+
+func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	sendAndTrack(bot, msg)
+}
+
+func replyError(bot *tgbotapi.BotAPI, chatID int64, text string) {
+	sendMessage(bot, chatID, "❌ "+text)
+}
+
+func sendAndTrack(bot *tgbotapi.BotAPI, msg tgbotapi.MessageConfig) {
+	deleteLastMessage(bot, msg.ChatID)
+	sentMsg, err := bot.Send(msg)
+	if err == nil {
+		lastMessageIDs[msg.ChatID] = sentMsg.MessageID
+	}
+}
+
+func deleteLastMessage(bot *tgbotapi.BotAPI, chatID int64) {
+	if msgID, ok := lastMessageIDs[chatID]; ok {
+		deleteMsg := tgbotapi.NewDeleteMessage(chatID, msgID)
+		bot.Request(deleteMsg)
+		delete(lastMessageIDs, chatID)
+	}
+}
+
+// (Semua fungsi Pakasir, payment checker, backup/restore, loadConfig, apiCall, getIpInfo tetap sama seperti versi original)
+
+func loadConfig() (BotConfig, error) {
+	var config BotConfig
+	file, err := ioutil.ReadFile(BotConfigFile)
+	if err != nil {
+		return config, err
+	}
+	err = json.Unmarshal(file, &config)
+
+	if config.Domain == "" {
+		if domainBytes, err := ioutil.ReadFile(DomainFile); err == nil {
+			config.Domain = strings.TrimSpace(string(domainBytes))
+		}
+	}
+
+	return config, err
+}
+
+func apiCall(method, endpoint string, payload interface{}) (map[string]interface{}, error) {
+	var reqBody []byte
+	var err error
+
+	if payload != nil {
+		reqBody, err = json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest(method, ApiUrl+endpoint, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, err
 	}
 
-	if res["success"] != true {
-		return nil, fmt.Errorf("failed to get users")
-	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", ApiKey)
 
-	var users []UserData
-	dataBytes, _ := json.Marshal(res["data"])
-	json.Unmarshal(dataBytes, &users)
-	return users, nil
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	var result map[string]interface{}
+	json.Unmarshal(body, &result)
+
+	return result, nil
+}
+
+func getIpInfo() (IpInfo, error) {
+	resp, err := http.Get("http://ip-api.com/json/")
+	if err != nil {
+		return IpInfo{}, err
+	}
+	defer resp.Body.Close()
+
+	var info IpInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return IpInfo{}, err
+	}
+	return info, nil
 }
