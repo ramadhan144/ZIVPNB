@@ -673,7 +673,7 @@ func sendAccountInfo(bot *tgbotapi.BotAPI, chatID int64, data map[string]interfa
 	showMainMenu(bot, chatID, config)
 }
 
-// <--- BARU: Cek dan tampilkan akun existing jika ada
+// <--- DIPERBAIKI: Admin tidak lagi diblokir oleh pesan peringatan
 func showExistingIfAny(bot *tgbotapi.BotAPI, chatID int64, userID int64, config *BotConfig) bool {
 	password := userAccounts[userID]
 	if password == "" {
@@ -692,8 +692,15 @@ func showExistingIfAny(bot *tgbotapi.BotAPI, chatID int64, userID int64, config 
 				"expired":  u.Expired,
 			}
 			sendAccountInfo(bot, chatID, data, config)
-			sendMessage(bot, chatID, "⚠️ Anda sudah memiliki akun VPN. Untuk perubahan (renew/delete), hubungi admin.")
-			return true
+
+			// Hanya tampilkan pesan peringatan untuk NON-ADMIN
+			if userID != config.AdminID {
+				sendMessage(bot, chatID, "⚠️ Anda sudah memiliki akun VPN. Untuk perubahan (renew/delete), hubungi admin.")
+				return true
+			}
+
+			// Jika admin, cukup tampilkan info akun lalu lanjut ke menu utama
+			return false
 		}
 	}
 
